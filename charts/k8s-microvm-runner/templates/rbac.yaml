@@ -1,0 +1,37 @@
+{{- /*
+The runner's ServiceAccount needs less than the k8s-runner's: pods to create
+and delete slots and watch them, events to stream them. No pods/exec (exec
+goes through the supervisor), no secrets (nothing is materialized as one),
+no persistentvolumeclaims (there are none). The Role lives in the workload
+namespace, where the slots are.
+*/ -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "service-base.fullname" . }}
+  namespace: {{ default .Release.Namespace .Values.workloadNamespace | quote }}
+  labels:
+    {{- include "service-base.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "service-base.fullname" . }}
+  namespace: {{ default .Release.Namespace .Values.workloadNamespace | quote }}
+  labels:
+    {{- include "service-base.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "service-base.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "service-base.fullname" . }}

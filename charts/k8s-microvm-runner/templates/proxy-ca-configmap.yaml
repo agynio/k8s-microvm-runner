@@ -1,0 +1,12 @@
+{{- if .Values.imageProxy.ca }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "k8s-microvm-runner.proxyCAName" . }}
+  namespace: {{ default .Release.Namespace .Values.workloadNamespace | quote }}
+  labels:
+    {{- include "service-base.labels" . | nindent 4 }}
+data:
+  ca.crt: |
+{{ .Values.imageProxy.ca | indent 4 }}
+{{- end }}

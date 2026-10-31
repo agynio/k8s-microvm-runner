@@ -1,0 +1,297 @@
+syntax = "proto3";
+
+// The control protocol between the k8s-microvm-runner and the slot
+// supervisor in each of its slot Pods. The runner is the only caller: it
+// dials a supervisor over the Pod network and authenticates every call with
+// the token it injected when it created the Pod. The supervisor never calls
+// anything but the image proxy and the snapshot store.
+package agynio.microvm.slot.v1;
+
+import "agynio/api/runner/v1/runner.proto";
+import "google/protobuf/timestamp.proto";
+
+service SlotSupervisorService {
+  // Describe is health, identity and inventory in one answer: what versions
+  // the slot runs, whether it holds a workload and which, and which snapshots
+  // it still caches. The runner adopts slots with it at startup and polls it
+  // to tell a slow supervisor from a dead one.
+  rpc Describe(DescribeRequest) returns (DescribeResponse);
+  // Bind starts a workload in an idle slot. It returns once the start is
+  // accepted; the boot continues in the slot and its progress arrives on
+  // WatchState.
+  rpc Bind(BindRequest) returns (BindResponse);
+  // Inspect is the supervisor's view of the workload it holds.
+  rpc Inspect(InspectRequest) returns (InspectResponse);
+  // Stop ends the workload: the guest is killed, its writable layers and
+  // scratch volumes discarded, its persistent volumes persisted, and the
+  // slot cleared.
+  rpc Stop(StopRequest) returns (StopResponse);
+  // Hibernate pauses the guest, snapshots it, uploads the snapshot and the
+  // share's deltas, tears the guest down and clears the slot. It returns
+  // once the snapshot is durable in the store.
+  rpc Hibernate(HibernateRequest) returns (HibernateResponse);
+  // Wake restores a hibernated workload into this slot, from the cached
+  // snapshot when the slot still holds it and from the store otherwise. It
+  // returns once the guest is running again.
+  rpc Wake(WakeRequest) returns (WakeResponse);
+  // Exec runs a command in one of the workload's containers.
+  rpc Exec(stream ExecRequest) returns (stream ExecResponse);
+  // Logs streams what the supervisor captured from a container's stdio.
+  rpc Logs(LogsRequest) returns (stream LogsResponse);
+  // WatchState streams the held workload's state as it changes, starting
+  // with its current state. It ends when the slot is cleared.
+  rpc WatchState(WatchStateRequest) returns (stream WatchStateResponse);
+  // DiscardCache drops a cached snapshot the store no longer holds.
+  rpc DiscardCache(DiscardCacheRequest) returns (DiscardCacheResponse);
+}
+
+message DescribeRequest {}
+
+message DescribeResponse {
+  string slot_name = 1;
+  VersionSet versions = 2;
+  SlotState state = 3;
+  // The workload this slot holds, when bound.
+  WorkloadView workload = 4;
+  // Workload keys of the snapshots this slot still caches, newest first.
+  repeated string cached_snapshots = 5;
+  // Workloads this slot has hosted since it started.
+  int32 binds = 6;
+}
+
+enum SlotState {
+  SLOT_STATE_UNSPECIFIED = 0;
+  SLOT_STATE_IDLE = 1;
+  SLOT_STATE_BOUND = 2;
+}
+
+// VersionSet is what a snapshot is taken with and what a slot must run to
+// restore it: the VMM, the filesystem daemon, the guest kernel and image.
+message VersionSet {
+  string cloud_hypervisor = 1;
+  string virtiofsd = 2;
+  string guest_kernel = 3;
+  string guest_image = 4;
+  // A digest of the four, which is what a snapshot records.
+  string digest = 5;
+}
+
+// Flavor is the VM size a workload runs at.
+message Flavor {
+  string name = 1;
+  int32 vcpus = 2;
+  int64 memory_mib = 3;
+}
+
+// StoreConfig reaches the snapshot store. It travels with the calls that
+// need it rather than living in the Pod, so a slot holds the credentials
+// only while it uses them.
+message StoreConfig {
+  string endpoint = 1;
+  string bucket = 2;
+  string region = 3;
+  string access_key = 4;
+  string secret_key = 5;
+  bool use_tls = 6;
+  bool path_style = 7;
+  // Object key prefixes for the three kinds of object.
+  string snapshots_prefix = 8;
+  string volumes_prefix = 9;
+  string templates_prefix = 10;
+}
+
+// VolumeStoreRef says where a persistent volume's delta lives.
+message VolumeStoreRef {
+  // The volume's name in the workload spec.
+  string name = 1;
+  // The volume_key the platform gave it, which keys its delta in the store.
+  string volume_key = 2;
+  // The bucket and prefix its storage class maps to; empty means the
+  // store's defaults.
+  string bucket = 3;
+  string prefix = 4;
+}
+
+message BindRequest {
+  // The workload spec exactly as the platform sent it.
+  agynio.api.runner.v1.StartWorkloadRequest spec = 1;
+  Flavor flavor = 2;
+  StoreConfig store = 3;
+  repeated VolumeStoreRef volumes = 4;
+  // The workload_key the platform put in the spec's labels.
+  string workload_key = 5;
+}
+
+message BindResponse {
+  WorkloadView workload = 1;
+}
+
+message InspectRequest {
+  string workload_id = 1;
+}
+
+message InspectResponse {
+  WorkloadView workload = 1;
+}
+
+message StopRequest {
+  string workload_id = 1;
+  // Seconds the guest's processes get after SIGTERM before the guest is
+  // killed. Zero kills at once.
+  int64 timeout_sec = 2;
+  StoreConfig store = 3;
+  repeated VolumeStoreRef volumes = 4;
+}
+
+message StopResponse {}
+
+message HibernateRequest {
+  string workload_id = 1;
+  StoreConfig store = 2;
+  repeated VolumeStoreRef volumes = 3;
+}
+
+message HibernateResponse {
+  // Bytes the snapshot occupies in the store: memory, VM state and deltas.
+  int64 snapshot_size_bytes = 1;
+}
+
+message WakeRequest {
+  string workload_id = 1;
+  string workload_key = 2;
+  Flavor flavor = 3;
+  StoreConfig store = 4;
+  repeated VolumeStoreRef volumes = 5;
+  // Fresh pull credentials: the ones the workload started with were
+  // revoked when it went to sleep, and a slot that lacks an image pulls it.
+  repeated agynio.api.runner.v1.ImagePullCredential image_pull_credentials = 6;
+}
+
+message WakeResponse {
+  WorkloadView workload = 1;
+}
+
+message WorkloadView {
+  string workload_id = 1;
+  string workload_key = 2;
+  map<string, string> labels = 3;
+  string flavor = 4;
+  WorkloadStatus status = 5;
+  // Why the workload failed, when it did.
+  string failure = 6;
+  repeated ContainerView containers = 7;
+  // Present while hibernated.
+  int64 snapshot_size_bytes = 8;
+  google.protobuf.Timestamp started_at = 9;
+  google.protobuf.Timestamp hibernated_at = 10;
+  // The share paths the main container mounts, for inspect.
+  repeated MountView mounts = 11;
+}
+
+enum WorkloadStatus {
+  WORKLOAD_STATUS_UNSPECIFIED = 0;
+  WORKLOAD_STATUS_STARTING = 1;
+  WORKLOAD_STATUS_RUNNING = 2;
+  WORKLOAD_STATUS_HIBERNATING = 3;
+  WORKLOAD_STATUS_HIBERNATED = 4;
+  WORKLOAD_STATUS_WAKING = 5;
+  WORKLOAD_STATUS_STOPPING = 6;
+  WORKLOAD_STATUS_STOPPED = 7;
+  WORKLOAD_STATUS_FAILED = 8;
+}
+
+message ContainerView {
+  string name = 1;
+  ContainerRole role = 2;
+  string image = 3;
+  string image_digest = 4;
+  ContainerStatus status = 5;
+  optional int32 exit_code = 6;
+  string reason = 7;
+  string message = 8;
+  int32 restart_count = 9;
+  google.protobuf.Timestamp started_at = 10;
+  google.protobuf.Timestamp finished_at = 11;
+}
+
+enum ContainerRole {
+  CONTAINER_ROLE_UNSPECIFIED = 0;
+  CONTAINER_ROLE_MAIN = 1;
+  CONTAINER_ROLE_SIDECAR = 2;
+  CONTAINER_ROLE_INIT = 3;
+}
+
+enum ContainerStatus {
+  CONTAINER_STATUS_UNSPECIFIED = 0;
+  CONTAINER_STATUS_WAITING = 1;
+  CONTAINER_STATUS_RUNNING = 2;
+  CONTAINER_STATUS_TERMINATED = 3;
+}
+
+message MountView {
+  string volume = 1;
+  string type = 2;
+  string destination = 3;
+  bool read_only = 4;
+}
+
+message ExecRequest {
+  oneof event {
+    ExecStart start = 1;
+    bytes stdin = 2;
+    bool stdin_eof = 3;
+    ExecResize resize = 4;
+  }
+}
+
+message ExecStart {
+  string workload_id = 1;
+  // Empty means the main container.
+  string container = 2;
+  repeated string command = 3;
+  bool tty = 4;
+}
+
+message ExecResize {
+  uint32 rows = 1;
+  uint32 cols = 2;
+}
+
+message ExecResponse {
+  oneof event {
+    bytes stdout = 1;
+    bytes stderr = 2;
+    ExecExit exit = 3;
+  }
+}
+
+message ExecExit {
+  int32 code = 1;
+  // Set when the command could not be run at all.
+  string error = 2;
+}
+
+message LogsRequest {
+  string workload_id = 1;
+  string container = 2;
+  int64 tail_lines = 3;
+  google.protobuf.Timestamp since = 4;
+  bool follow = 5;
+  bool timestamps = 6;
+}
+
+message LogsResponse {
+  bytes data = 1;
+}
+
+message WatchStateRequest {}
+
+message WatchStateResponse {
+  WorkloadView workload = 1;
+}
+
+message DiscardCacheRequest {
+  string workload_key = 1;
+}
+
+message DiscardCacheResponse {}
