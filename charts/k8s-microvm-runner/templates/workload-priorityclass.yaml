@@ -1,0 +1,11 @@
+{{- if .Values.workloadPriorityClass.create }}
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ required "workloadPriorityClass.name is required when create is true" .Values.workloadPriorityClass.name | quote }}
+  labels:
+    {{- include "service-base.labels" . | nindent 4 }}
+value: {{ int64 .Values.workloadPriorityClass.value }}
+globalDefault: false
+description: "Agent and sandbox workloads: preempted before any Pod at the default priority."
+{{- end }}

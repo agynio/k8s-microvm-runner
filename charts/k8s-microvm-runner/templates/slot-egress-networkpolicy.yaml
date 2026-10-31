@@ -1,0 +1,49 @@
+{{- if .Values.slotEgressNetworkPolicy.enabled }}
+{{- $policy := .Values.slotEgressNetworkPolicy -}}
+{{- /*
+NetworkPolicies are additive: this one widens the slot Pods' egress to the
+image proxy and the snapshot store, which the workload egress policy blocks
+as cluster-internal addresses. It selects slots only, by the label every
+slot carries, so the k8s-runner's workloads are not widened with them.
+*/ -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $policy.name | quote }}
+  namespace: {{ default .Release.Namespace .Values.workloadNamespace | quote }}
+  labels:
+    {{- include "service-base.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      agyn.io/slot: "true"
+  policyTypes:
+    - Egress
+  egress:
+    {{- range $name, $peer := dict "imageProxy" $policy.imageProxy "snapshotStore" $policy.snapshotStore }}
+    {{- if or $peer.cidr $peer.namespaceSelector $peer.podSelector }}
+    - to:
+        {{- if $peer.cidr }}
+        - ipBlock:
+            cidr: {{ $peer.cidr | quote }}
+        {{- end }}
+        {{- if or $peer.namespaceSelector $peer.podSelector }}
+        - {{- with $peer.namespaceSelector }}
+          namespaceSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+          {{- end }}
+          {{- with $peer.podSelector }}
+          podSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+          {{- end }}
+        {{- end }}
+      {{- with $peer.port }}
+      ports:
+        - protocol: TCP
+          port: {{ . }}
+      {{- end }}
+    {{- end }}
+    {{- end }}
+{{- end }}

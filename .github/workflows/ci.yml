@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Lint Helm chart
+        run: scripts/verify-chart.sh
+
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@v1
+
+      - name: Generate protobuf bindings
+        run: buf generate
+
+      - name: Check formatting
+        run: test -z "$(gofmt -l ./cmd ./internal)"
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build
+        run: go build ./...

@@ -1,0 +1,28 @@
+version: v2
+
+# The slot supervisor's control protocol is this repository's own. The one
+# message it borrows -- the StartWorkloadRequest the platform sent -- comes
+# from buf.build/agynio/api, whose bindings runner-core already ships and
+# registers; generating them a second time here would panic at start with a
+# duplicate registration, so the import resolves to runner-core's package.
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/agynio/k8s-microvm-runner/internal/.gen
+    - file_option: go_package_prefix
+      module: buf.build/agynio/api
+      value: github.com/agynio/runner-core/gen
+
+inputs:
+  - directory: proto
+
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: internal/.gen
+    opt:
+      - paths=source_relative
+  - remote: buf.build/grpc/go
+    out: internal/.gen
+    opt:
+      - paths=source_relative

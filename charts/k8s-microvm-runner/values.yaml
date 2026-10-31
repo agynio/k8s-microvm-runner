@@ -1,0 +1,299 @@
+nameOverride: ""
+fullnameOverride: ""
+
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+image:
+  registry: ""
+  repository: ghcr.io/agynio/k8s-microvm-runner
+  tag: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# The runner keeps the only index of slots, workloads and volumes; a second
+# replica would fight it for the pool.
+replicaCount: 1
+revisionHistoryLimit: 10
+updateStrategy:
+  type: Recreate
+
+deploymentAnnotations: {}
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+automountServiceAccountToken: true
+
+# The Role is rendered by this chart in the workload namespace, where the
+# slot Pods live: exactly pods get/list/watch/create/delete and events
+# get/list/watch. service-base's own RBAC stays off.
+rbac:
+  create: false
+  clusterWide: false
+  rules: []
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  enabled: true
+  fsGroup: null
+
+securityContext:
+  enabled: true
+  runAsNonRoot: true
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+priorityClassName: ""
+terminationGracePeriodSeconds: null
+
+service:
+  enabled: true
+  type: ClusterIP
+  annotations: {}
+  labels: {}
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: grpc
+      protocol: TCP
+
+containerPorts:
+  - name: grpc
+    containerPort: 50051
+    protocol: TCP
+
+command: []
+args: []
+
+# What this runner offers. Reported to the platform at startup and replacing
+# whatever it reported before, so this file is the single source of truth
+# for the sizes and storage tiers workloads can ask for by name. A flavor is
+# a VM size; warm is how many idle slots to keep ready for it, max how many
+# slots it may occupy at once (0 is unlimited).
+catalogPath: /etc/agyn/runner-catalog/catalog.yaml
+
+catalog:
+  flavors:
+    - name: vm-2gb
+      default: true
+      vcpus: 2
+      memory: "2Gi"
+      warm: 1
+      max: 10
+    - name: vm-4gb
+      vcpus: 2
+      memory: "4Gi"
+      warm: 0
+      max: 5
+  storageClasses:
+    # A class names the store tier its volumes go to; bucket and prefix
+    # empty means the store's defaults.
+    - name: standard
+      default: true
+  capabilities: [docker]
+
+# The namespace the slot Pods are created in: the workload namespace the
+# k8s-runner uses, so its egress NetworkPolicy, Pod Security configuration
+# and PriorityClass apply once.
+workloadNamespace: agyn-workloads
+
+# The slot Pod template. The slot image bundles the supervisor with the
+# pinned Cloud Hypervisor, virtiofsd, guest kernel and guest image.
+slot:
+  image:
+    registry: ""
+    repository: ghcr.io/agynio/k8s-microvm-slot
+    tag: ""
+    pullPolicy: IfNotPresent
+  # The supervisor's fixed share of each slot Pod's memory limit, on top of
+  # the flavor's: the VMM, virtiofsd and the page cache the image serves
+  # through.
+  overheadMemory: 1Gi
+  # The emptyDir cache holding unpacked images and the deltas and snapshots
+  # of what the slot hosts.
+  cacheSize: 20Gi
+  # A CPU limit as a multiple of the flavor's vCPUs; 0 sets none.
+  cpuLimitFactor: 0
+  # hostUsers false runs each slot in a user namespace, confining its
+  # capability set to that namespace. Needs user namespaces on the cluster
+  # and vm.unprivileged_userfaultfd=1 on the nodes, since SYS_PTRACE cannot
+  # be granted there. Off by default.
+  hostUsers: true
+  # The device plugin's extended resources for /dev/kvm and /dev/net/tun.
+  kvmResource: squat.ai/kvm
+  tunResource: squat.ai/tun
+  # Guests boot with idle=poll under nested virtualization, where a halted
+  # vCPU wakes tens of milliseconds late. Off on hardware KVM.
+  guestIdlePoll: false
+  # How long a slot keeps a hibernated workload's snapshot after it leaves,
+  # so a wake back into it fetches nothing.
+  snapshotCacheTTL: 1h
+  # A slot is retired after this many workloads (0 never).
+  maxBinds: 50
+  warmupTimeout: 5m
+
+# The image proxy's CA, where its certificate is not publicly trusted. The
+# PEM is put in a ConfigMap in the workload namespace and mounted into every
+# slot; the supervisor trusts it in addition to the system roots.
+imageProxy:
+  ca: ""
+
+# The S3-compatible snapshot store. Credentials come from a Secret: either
+# one this chart creates from accessKey and secretKey, or an existing one
+# holding SNAPSHOT_STORE_ACCESS_KEY and SNAPSHOT_STORE_SECRET_KEY.
+snapshotStore:
+  endpoint: ""
+  bucket: ""
+  region: ""
+  tls: true
+  pathStyle: true
+  snapshotsPrefix: snapshots
+  volumesPrefix: volumes
+  templatesPrefix: templates
+  accessKey: ""
+  secretKey: ""
+  existingSecret: ""
+
+env:
+  - name: GRPC_ADDR
+    value: "0.0.0.0:50051"
+  - name: ZITI_ENABLED
+    value: "false"
+  - name: GATEWAY_ADDRESS
+    value: "gateway:8080"
+  - name: SERVICE_TOKEN
+    value: ""
+  - name: ZITI_ENROLLMENT_TIMEOUT
+    value: "2m"
+  - name: LOG_LEVEL
+    value: "info"
+envFrom: []
+extraEnvVars: []
+extraEnvVarsCM: ""
+extraEnvVarsSecret: ""
+
+configMounts: []
+extraVolumeMounts: []
+extraVolumes: []
+
+initContainers: []
+extraContainers: []
+
+lifecycle: {}
+
+livenessProbe:
+  enabled: true
+  tcpSocket:
+    port: grpc
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 1
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  tcpSocket:
+    port: grpc
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 1
+  failureThreshold: 3
+  successThreshold: 1
+
+startupProbe:
+  enabled: false
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 1
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: null
+  metrics: []
+  behavior: {}
+
+pdb:
+  enabled: false
+  minAvailable: null
+  maxUnavailable: null
+
+ingress:
+  enabled: false
+  ingressClassName: ""
+  annotations: {}
+  hosts: []
+  tls: []
+
+metrics:
+  enabled: false
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    interval: ""
+    scrapeTimeout: ""
+    honorLabels: false
+    labels: {}
+    annotations: {}
+    relabelings: []
+    metricRelabelings: []
+    endpoints:
+      - port: grpc
+        path: /metrics
+        interval: ""
+        scrapeTimeout: ""
+
+# Slot Pods run below the default priority every other Pod gets, so a
+# restarting platform Pod preempts them instead of waiting behind them.
+# create: false names a class managed elsewhere (the k8s-runner's chart
+# creates the same one); an empty name sets none.
+workloadPriorityClass:
+  create: true
+  name: agyn-workload
+  value: -1
+
+# A generic device plugin advertising /dev/kvm and /dev/net/tun as the
+# extended resources the slots request. Off by default: a cluster that
+# already runs one (KubeVirt's, or the k8s-runner's kata setup) keeps it.
+devicePlugin:
+  enabled: false
+  image: ghcr.io/squat/generic-device-plugin:latest
+  domain: squat.ai
+  kvmCount: 100
+  tunCount: 100
+
+# An additional NetworkPolicy for the slot Pods only, with the two egress
+# rules the slots need beyond the workload policy: the image proxy as a Pod
+# reaches it, and the snapshot store. Off by default; the rules can equally
+# be added to the workload egress policy the k8s-runner's chart renders.
+slotEgressNetworkPolicy:
+  enabled: false
+  name: microvm-slot-egress
+  imageProxy:
+    namespaceSelector: {}
+    podSelector: {}
+    cidr: ""
+    port: null
+  snapshotStore:
+    namespaceSelector: {}
+    podSelector: {}
+    cidr: ""
+    port: null

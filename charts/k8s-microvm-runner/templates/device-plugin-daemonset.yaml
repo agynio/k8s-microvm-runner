@@ -1,0 +1,49 @@
+{{- if .Values.devicePlugin.enabled }}
+{{- /*
+Grants /dev/kvm and /dev/net/tun to slot Pods as extended resources, the
+way KubeVirt grants them, so a slot needs no privileged flag and no hostPath
+for its devices.
+*/ -}}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "service-base.fullname" . }}-device-plugin
+  namespace: kube-system
+  labels:
+    {{- include "service-base.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "service-base.fullname" . }}-device-plugin
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "service-base.fullname" . }}-device-plugin
+    spec:
+      priorityClassName: system-node-critical
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: generic-device-plugin
+          image: {{ .Values.devicePlugin.image | quote }}
+          args:
+            - --domain={{ .Values.devicePlugin.domain }}
+            - --device
+            - '{"name": "kvm", "groups": [{"count": {{ int .Values.devicePlugin.kvmCount }}, "paths": [{"path": "/dev/kvm"}]}]}'
+            - --device
+            - '{"name": "tun", "groups": [{"count": {{ int .Values.devicePlugin.tunCount }}, "paths": [{"path": "/dev/net/tun"}]}]}'
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: device-plugin
+              mountPath: /var/lib/kubelet/device-plugins
+            - name: dev
+              mountPath: /dev
+      volumes:
+        - name: device-plugin
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+        - name: dev
+          hostPath:
+            path: /dev
+{{- end }}

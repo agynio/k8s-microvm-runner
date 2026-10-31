@@ -1,0 +1,12 @@
+{{- include "k8s-microvm-runner.configure" . -}}
+{{- $sa := include "service-base.serviceAccount" . -}}
+{{- $svc := include "service-base.service" . -}}
+{{- $deploy := include "service-base.deployment" . -}}
+{{- $pdb := include "service-base.pdb" . -}}
+{{- $parts := list -}}
+{{- range (list $sa $svc $deploy $pdb) -}}
+  {{- if . -}}
+    {{- $parts = append $parts . -}}
+  {{- end -}}
+{{- end -}}
+{{ join "\n---\n" $parts }}
