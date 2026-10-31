@@ -3,7 +3,7 @@ module github.com/agynio/k8s-microvm-runner
 go 1.25.11
 
 require (
-	github.com/agynio/runner-core v0.0.0-20261030233625-9d56902f4fd4
+	github.com/agynio/runner-core v0.0.0-20261031110857-2da0c242e393
 	github.com/containerd/ttrpc v1.2.7
 	github.com/google/go-containerregistry v0.20.6
 	github.com/google/uuid v1.6.0
