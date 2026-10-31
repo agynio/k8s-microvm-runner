@@ -263,10 +263,11 @@ metrics:
 
 # Slot Pods run below the default priority every other Pod gets, so a
 # restarting platform Pod preempts them instead of waiting behind them.
-# create: false names a class managed elsewhere (the k8s-runner's chart
-# creates the same one); an empty name sets none.
+# The class is the platform's: the k8s-runner's chart creates it with the
+# platform, so this chart only names it. create: true makes it here, for a
+# cluster that has no platform runner; an empty name sets none.
 workloadPriorityClass:
-  create: true
+  create: false
   name: agyn-workload
   value: -1
 
