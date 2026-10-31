@@ -49,5 +49,6 @@ Beyond what the k8s-runner needs, the cluster must provide:
   add them to the k8s-runner chart's workload egress policy or enable
   `slotEgressNetworkPolicy`. The image proxy's hostname must resolve from a Pod
   to an address the policy admits (the local bundle rewrites it in cluster DNS).
-- **PriorityClass**: `agyn-workload`, which the k8s-runner's chart also
-  creates; set `workloadPriorityClass.create: false` where it already exists.
+- **PriorityClass**: `agyn-workload`, which the platform's k8s-runner chart
+  creates. This chart only names it; set `workloadPriorityClass.create: true`
+  on a cluster that has no platform runner to create it.
