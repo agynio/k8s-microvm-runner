@@ -19,10 +19,17 @@ import (
 	"github.com/agynio/k8s-microvm-runner/internal/slotclient"
 )
 
+// execTargetPrefix is how the Terminal Proxy names an exec target today:
+// "workload-<instance id>", the k8s-runner's Pod name for the workload. This
+// runner's instance id is the workload id, so the target resolves with or
+// without it, and the proxy works against this runner unchanged.
+const execTargetPrefix = "workload-"
+
 // PrepareExec readies a command to run in the workload's main container.
-// The target id is the workload id a start returned.
+// The target id is the instance id a start returned, bare or in the
+// Terminal Proxy's "workload-<instance id>" form.
 func (b *Backend) PrepareExec(ctx context.Context, targetID string, command []string, tty bool) (backend.Execution, error) {
-	w, err := b.get(targetID)
+	w, err := b.get(strings.TrimPrefix(strings.TrimSpace(targetID), execTargetPrefix))
 	if err != nil {
 		return nil, err
 	}
