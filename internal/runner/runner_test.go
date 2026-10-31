@@ -219,3 +219,21 @@ func TestMergeLabels(t *testing.T) {
 		t.Fatalf("unexpected labels %v", labels)
 	}
 }
+
+// The Terminal Proxy names an exec target "workload-<instance id>", the
+// k8s-runner's Pod name; the bare instance id resolves to the same workload.
+// The workload here has no slot, so a resolved target fails on the slot, not
+// on the lookup.
+func TestPrepareExecResolvesTheProxysTargetName(t *testing.T) {
+	b, idx := newBackend(t)
+	idx.Put(&index.Workload{ID: "8852c72b-4012-4b02-8c6c-5679cb30c0c1", Status: runnerv1.WorkloadStatus_WORKLOAD_STATUS_RUNNING})
+	for _, target := range []string{"8852c72b-4012-4b02-8c6c-5679cb30c0c1", "workload-8852c72b-4012-4b02-8c6c-5679cb30c0c1"} {
+		_, err := b.PrepareExec(context.Background(), target, []string{"sh"}, true)
+		if status.Code(err) == codes.NotFound {
+			t.Fatalf("target %q did not resolve: %v", target, err)
+		}
+	}
+	if _, err := b.PrepareExec(context.Background(), "workload-unknown", []string{"sh"}, true); status.Code(err) != codes.NotFound {
+		t.Fatalf("expected NotFound for an unknown target, got %v", err)
+	}
+}
