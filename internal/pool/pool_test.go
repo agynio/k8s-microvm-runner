@@ -280,3 +280,23 @@ func TestPodInUserNamespaceDropsPtrace(t *testing.T) {
 		t.Fatal("expected hostUsers unset by default")
 	}
 }
+
+// The restore mode reaches the supervisor; left empty, the supervisor's own
+// default stands.
+func TestPodCarriesTheRestoreMode(t *testing.T) {
+	restoreMode := func(tpl PodTemplate) (string, bool) {
+		pod := tpl.Pod("s", "ns", "small", FlavorSpec{VCPUs: 1, MemoryMiB: 1024}, "t", nil)
+		for _, e := range pod.Spec.Containers[0].Env {
+			if e.Name == "RESTORE_MODE" {
+				return e.Value, true
+			}
+		}
+		return "", false
+	}
+	if v, ok := restoreMode(PodTemplate{Image: "slot:test", RestoreMode: "Copy"}); !ok || v != "Copy" {
+		t.Fatalf("RESTORE_MODE = %q, %v; want Copy", v, ok)
+	}
+	if v, ok := restoreMode(PodTemplate{Image: "slot:test"}); ok {
+		t.Fatalf("RESTORE_MODE = %q; want it unset", v)
+	}
+}

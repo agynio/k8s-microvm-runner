@@ -42,6 +42,10 @@ Beyond what the k8s-runner needs, the cluster must provide:
 - **Guest idle behaviour**: `slot.guestIdlePoll: true` under nested
   virtualization, where a halted vCPU wakes tens of milliseconds late; off on
   hardware KVM.
+- **Guest memory on a wake**: `slot.guestRestoreMode: Copy` under nested
+  virtualization, where faulting pages in on demand leaves a woken guest
+  crawling for as long as a minute; `OnDemand` otherwise. Existing slots keep
+  the mode they were created with.
 - **Snapshot store**: an S3-compatible bucket with server-side encryption,
   readable only with the runner's credentials.
 - **Network**: two egress rules for the slot Pods beyond the workload egress

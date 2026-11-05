@@ -48,6 +48,7 @@ override it.
 {{- $env = append $env (dict "name" "SLOT_KVM_RESOURCE" "value" .Values.slot.kvmResource) -}}
 {{- $env = append $env (dict "name" "SLOT_TUN_RESOURCE" "value" .Values.slot.tunResource) -}}
 {{- $env = append $env (dict "name" "GUEST_IDLE_POLL" "value" (toString .Values.slot.guestIdlePoll)) -}}
+{{- $env = append $env (dict "name" "GUEST_RESTORE_MODE" "value" .Values.slot.guestRestoreMode) -}}
 {{- $env = append $env (dict "name" "SLOT_SNAPSHOT_CACHE_TTL" "value" (toString .Values.slot.snapshotCacheTTL)) -}}
 {{- $env = append $env (dict "name" "SLOT_MAX_BINDS" "value" (toString .Values.slot.maxBinds)) -}}
 {{- $env = append $env (dict "name" "SLOT_WARMUP_TIMEOUT" "value" (toString .Values.slot.warmupTimeout)) -}}

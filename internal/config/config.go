@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agynio/k8s-microvm-runner/internal/ch"
 	coreconfig "github.com/agynio/runner-core/config"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -39,6 +40,7 @@ type SlotConfig struct {
 	PriorityClass    string
 	ProxyCAConfigMap string
 	IdlePoll         bool
+	RestoreMode      string
 	SnapshotCacheTTL time.Duration
 	MaxBinds         int
 	WarmupTimeout    time.Duration
@@ -110,6 +112,10 @@ func Load() (Config, error) {
 	}
 	if slot.IdlePoll, err = coreconfig.ReadBool("GUEST_IDLE_POLL", false); err != nil {
 		return Config{}, err
+	}
+	slot.RestoreMode = coreconfig.ReadEnv("GUEST_RESTORE_MODE", ch.RestoreOnDemand)
+	if slot.RestoreMode != ch.RestoreOnDemand && slot.RestoreMode != ch.RestoreCopy {
+		return Config{}, fmt.Errorf("invalid GUEST_RESTORE_MODE %q: want %s or %s", slot.RestoreMode, ch.RestoreOnDemand, ch.RestoreCopy)
 	}
 	if slot.SnapshotCacheTTL, err = coreconfig.ReadDuration("SLOT_SNAPSHOT_CACHE_TTL", time.Hour); err != nil {
 		return Config{}, err
