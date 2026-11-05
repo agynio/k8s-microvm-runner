@@ -86,6 +86,7 @@ func run() error {
 			Image: cfg.Slot.Image, ImagePullPolicy: cfg.Slot.ImagePullPolicy, OverheadMemory: cfg.Slot.OverheadMemory, CacheSize: cfg.Slot.CacheSize,
 			CPULimitFactor: cfg.Slot.CPULimitFactor, HostUsers: cfg.Slot.HostUsers, KVMResource: cfg.Slot.KVMResource, TUNResource: cfg.Slot.TUNResource,
 			PriorityClass: cfg.Slot.PriorityClass, ProxyCAConfigMap: cfg.Slot.ProxyCAConfigMap, IdlePoll: cfg.Slot.IdlePoll,
+			RestoreMode:      cfg.Slot.RestoreMode,
 			SnapshotCacheTTL: cfg.Slot.SnapshotCacheTTL.String(), LogLevel: cfg.LogLevel,
 		},
 		MaxBinds:      cfg.Slot.MaxBinds,

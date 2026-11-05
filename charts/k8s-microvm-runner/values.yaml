@@ -136,6 +136,11 @@ slot:
   # Guests boot with idle=poll under nested virtualization, where a halted
   # vCPU wakes tens of milliseconds late. Off on hardware KVM.
   guestIdlePoll: false
+  # How a wake loads guest memory. OnDemand faults each page in as the guest
+  # first touches it, which under nested virtualization leaves the guest
+  # crawling for as long as a minute; Copy reads the snapshot's pages before
+  # the guest resumes. Slots read this when they are created.
+  guestRestoreMode: OnDemand
   # How long a slot keeps a hibernated workload's snapshot after it leaves,
   # so a wake back into it fetches nothing.
   snapshotCacheTTL: 1h

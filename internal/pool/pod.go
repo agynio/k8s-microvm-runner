@@ -46,6 +46,9 @@ type PodTemplate struct {
 	ProxyCAConfigMap string
 	// IdlePoll boots guests with idle=poll.
 	IdlePoll bool
+	// RestoreMode is how a wake loads guest memory: OnDemand or Copy. Empty
+	// leaves the supervisor's default.
+	RestoreMode string
 	// SnapshotCacheTTL is how long a slot keeps a hibernated workload's
 	// snapshot.
 	SnapshotCacheTTL string
@@ -110,6 +113,9 @@ func (t PodTemplate) Pod(name, namespace, flavor string, spec FlavorSpec, token 
 	}
 	if t.SnapshotCacheTTL != "" {
 		env = append(env, corev1.EnvVar{Name: "SLOT_SNAPSHOT_CACHE_TTL", Value: t.SnapshotCacheTTL})
+	}
+	if t.RestoreMode != "" {
+		env = append(env, corev1.EnvVar{Name: "RESTORE_MODE", Value: t.RestoreMode})
 	}
 	if t.LogLevel != "" {
 		env = append(env, corev1.EnvVar{Name: "LOG_LEVEL", Value: t.LogLevel})
