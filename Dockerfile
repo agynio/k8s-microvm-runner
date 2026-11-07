@@ -42,8 +42,10 @@ USER 10001:10001
 ENTRYPOINT ["/app/k8s-microvm-runner"]
 
 # The guest assets: fetched once per architecture and version, not per
-# build of the Go code.
-FROM alpine:3.21 AS assets
+# build of the Go code. The stage only downloads and unpacks, choosing the
+# files by TARGETARCH, so it runs on the build platform: a cross-build does
+# not unpack the kata-static archive under emulation.
+FROM --platform=$BUILDPLATFORM alpine:3.21 AS assets
 ARG TARGETARCH
 ARG CLOUD_HYPERVISOR_VERSION
 ARG KATA_VERSION

@@ -1,0 +1,140 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  CHART_DIR: charts/k8s-microvm-runner
+  CHART_REGISTRY: oci://ghcr.io/agynio/charts
+
+jobs:
+  image:
+    name: Build and push ${{ matrix.target }} image
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: runner
+            image: ghcr.io/agynio/k8s-microvm-runner
+          - target: slot
+            image: ghcr.io/agynio/k8s-microvm-slot
+    env:
+      IMAGE_NAME: ${{ matrix.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=short,prefix=sha-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: ${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=k8s-microvm-${{ matrix.target }}
+          cache-to: type=gha,scope=k8s-microvm-${{ matrix.target }},mode=max
+
+      - name: Verify multi-arch manifest
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          INSPECT="$(docker buildx imagetools inspect "$IMAGE_NAME:$TAG" --raw)"
+          FOUND="$(echo "$INSPECT" | jq -r '[.manifests[].platform.architecture] | sort | join(",")')"
+          MISSING=()
+          for ARCH in amd64 arm64; do
+            if ! echo "$FOUND" | grep -q "$ARCH"; then
+              MISSING+=("linux/$ARCH")
+            fi
+          done
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "::error::Missing architectures in $IMAGE_NAME:$TAG: ${MISSING[*]}"
+            exit 1
+          fi
+          echo "Manifest $IMAGE_NAME:$TAG includes linux/amd64 and linux/arm64"
+
+  helm:
+    name: Package and push Helm chart
+    # The chart defaults both images to its own version, so it is published
+    # only once both images are.
+    needs: image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine release version
+        id: version
+        run: |
+          if [[ "${GITHUB_REF_NAME}" != v*.*.* ]]; then
+            echo "Release tags must follow v*.*.*" >&2
+            exit 1
+          fi
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+      - name: Build chart dependencies
+        run: helm dependency build "$CHART_DIR"
+
+      - name: Lint chart
+        run: scripts/verify-chart.sh
+
+      - name: Package chart
+        run: |
+          mkdir -p dist
+          helm package "$CHART_DIR" \
+            --destination dist \
+            --version "${{ steps.version.outputs.version }}" \
+            --app-version "${{ steps.version.outputs.version }}"
+
+      - name: Push chart
+        run: |
+          CHART_NAME="$(basename "$CHART_DIR")"
+          helm push "dist/${CHART_NAME}-${{ steps.version.outputs.version }}.tgz" "$CHART_REGISTRY"
