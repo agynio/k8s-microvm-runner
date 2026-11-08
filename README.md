@@ -31,3 +31,7 @@ The `Dockerfile` has two targets: `runner` and `slot`. The slot bundles Cloud Hy
 docker buildx build --target runner -t k8s-microvm-runner .
 docker buildx build --target slot -t k8s-microvm-slot .
 ```
+
+## Releasing
+
+A `v*.*.*` tag publishes both images for linux/amd64 and linux/arm64, `ghcr.io/agynio/k8s-microvm-runner` and `ghcr.io/agynio/k8s-microvm-slot`, and then the chart, `oci://ghcr.io/agynio/charts/k8s-microvm-runner`, at the tag's version. The chart defaults both images to that version.
