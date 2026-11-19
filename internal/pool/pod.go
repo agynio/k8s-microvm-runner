@@ -155,7 +155,12 @@ func (t PodTemplate) Pod(name, namespace, flavor string, spec FlavorSpec, token 
 			RestartPolicy:                 corev1.RestartPolicyNever,
 			TerminationGracePeriodSeconds: ptr.To(int64(10)),
 			AutomountServiceAccountToken:  ptr.To(false),
-			PriorityClassName:             t.PriorityClass,
+			// Orphans go to PID 1 to be reaped. Every guest teardown makes
+			// one: virtiofsd's sandboxed child outlives its killed parent.
+			// The supervisor waits only on what it starts, so PID 1 is the
+			// pause process, which reaps whatever it is handed.
+			ShareProcessNamespace: ptr.To(true),
+			PriorityClassName:     t.PriorityClass,
 			SecurityContext: &corev1.PodSecurityContext{
 				Sysctls: []corev1.Sysctl{{Name: "net.ipv4.ip_forward", Value: "1"}},
 			},

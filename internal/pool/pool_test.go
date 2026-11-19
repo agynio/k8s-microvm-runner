@@ -262,6 +262,16 @@ func TestVersionRolloutAndLoss(t *testing.T) {
 	}
 }
 
+// The pause process is PID 1, not the supervisor, so the orphans a guest
+// teardown leaves behind are reaped.
+func TestPodSharesProcessNamespace(t *testing.T) {
+	tpl := PodTemplate{Image: "slot:test"}
+	pod := tpl.Pod("s", "ns", "small", FlavorSpec{VCPUs: 1, MemoryMiB: 1024}, "t", nil)
+	if pod.Spec.ShareProcessNamespace == nil || !*pod.Spec.ShareProcessNamespace {
+		t.Fatal("expected the process namespace shared with the pause process")
+	}
+}
+
 // In a user namespace SYS_PTRACE is not granted and the Pod says so.
 func TestPodInUserNamespaceDropsPtrace(t *testing.T) {
 	tpl := PodTemplate{Image: "slot:test", HostUsers: false}
